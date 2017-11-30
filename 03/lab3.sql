@@ -103,7 +103,8 @@ CREATE TABLE lab3.GamesResults
 INSERT INTO lab3.GamesResults
 VALUES
   (1, 2, '2017-11-10', 3, 0),
-  (2, 1, '2017-11-11', 2, 1)
+  (2, 1, '2017-11-11', 2, 1),
+  (2, 1, '2017-11-12', 1, 1)
 
 CREATE TABLE lab3.Goals
 (
@@ -124,17 +125,19 @@ VALUES
   (1, 2),
   (2, 4),
   (2, 4),
-  (2, 1)
+  (2, 1),
+  (3,1),
+  (3,4)
 
 
-SELECT *
-FROM lab3.GamesResults
+--SELECT *
+--FROM lab3.GamesResults
 GO
 
 CREATE FUNCTION lab3.TournamentResults(@inpDate DATETIME)
 RETURNS @retResults TABLE
 (
-  Place INT,
+  Place INT IDENTITY(1,1),
   Name nvarchar(40),
   Points int,
   Goals int,
@@ -142,6 +145,56 @@ RETURNS @retResults TABLE
 )
 AS
 BEGIN
+  WITH HostPoints(HostTeamId, Goals, Loses, Wins, Draws) AS
+  (
+    SELECT games.HostTeamId as HostTeamId,
+    SUM(games.HostScore) as Goals,
+    SUM(games.GuestScore) as Loses,
+    COUNT(CASE 
+      WHEN games.HostScore>games.GuestScore THEN 1
+      ELSE NULL
+      END) as Wins,
+    COUNT (CASE 
+      WHEN games.HostScore=games.GuestScore THEN 1
+      ELSE NULL
+      END) as Draws
+    FROM lab3.GamesResults as games
+    WHERE games.GameDate<@inpDate
+    GROUP BY HostTeamId
+  ),
+  GuestPoints(GuestTeamId, Goals, Loses, Wins, Draws) AS
+  (
+    SELECT games.GuestTeamId as GuestTeamId,
+    SUM(games.GuestScore) as Goals,
+    SUM(games.HostScore) as Loses,
+    COUNT(CASE
+      WHEN games.HostScore<games.GuestScore THEN 1
+      ELSE NULL
+      END) as Wins,
+	  COUNT (CASE 
+      WHEN games.HostScore=games.GuestScore THEN 1
+      ELSE NULL
+      END) as Draws
+    FROM lab3.GamesResults as games
+    WHERE games.GameDate<@inpDate
+    GROUP BY GuestTeamId
+  )
+  INSERT @retResults
+  SELECT team.TeamName as 'Команда',
+  (host.Wins+guest.Wins)*3+host.Draws+guest.Draws as 'Очки',
+  host.Goals+guest.Goals as 'Забито',
+  host.Loses+guest.Loses as 'Пропущено'
+  FROM lab3.Teams as team INNER JOIN
+  HostPoints as host ON host.HostTeamId=team.TeamId INNER JOIN
+  GuestPoints as guest ON guest.GuestTeamId=team.TeamId
   RETURN;
-END
+END;
 GO
+
+SELECT 
+  Place as 'Место',
+  Name as 'Название',
+  Points as 'Очки',
+  Goals as 'Забито',
+  LosesGoals as 'Пропущено'
+ FROM lab3.TournamentResults('2017-11-13')
