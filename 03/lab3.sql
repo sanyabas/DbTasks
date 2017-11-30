@@ -239,7 +239,7 @@ SET @query = 'SELECT * FROM #temp PIVOT(
   MAX(Score) FOR Team2 in('+@teamNames+')) p'
 EXEC(@query)
 
--- DROP TABLE #temp
+DROP TABLE #temp
 GO
 
 IF OBJECT_ID('lab3.PlayersWithGoals', 'V') IS NOT NULL
