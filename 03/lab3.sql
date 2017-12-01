@@ -61,7 +61,8 @@ INSERT INTO lab3.Teams
 VALUES
   ('Спартак'),
   ('Урал'),
-  ('Зенит')
+  ('Зенит'),
+  ('Рубин')
 
 CREATE TABLE lab3.Players
 (
@@ -83,7 +84,9 @@ VALUES
   (2, 'Ильин', 'Нападающий'),
   (2, 'Арапов', 'Вратарь'),
   (3, 'Дзюба', 'Нападющий'),
-  (3, 'Лодыгин', 'Вратарь')
+  (3, 'Лодыгин', 'Вратарь'),
+  (4, 'Рыжиков','Вратарь'),
+  (4, 'Жемалетдинов', 'Нападющий')
 
 
 CREATE TABLE lab3.GamesResults
@@ -105,9 +108,12 @@ CREATE TABLE lab3.GamesResults
 
 INSERT INTO lab3.GamesResults
 VALUES
-  (1, 2, '2017-11-10', 0, 3),
+  (1, 2, '2017-10-11', 0, 3),
   (2, 3, '2017-11-11', 2, 1),
-  (3, 1, '2017-11-12', 1, 1)
+  (3, 1, '2017-12-11', 1, 1),
+  (1, 4, '2017-13-11', 0, 0),
+  (4,2,'2017-14-11',0,2),
+  (3,4, '2017-15-11', 3, 1)
 
 CREATE TABLE lab3.Goals
 (
@@ -130,7 +136,13 @@ VALUES
   (2, 4),
   (2, 1),
   (3, 1),
-  (3, 6)
+  (3, 6),
+  (5, 4),
+  (5,4),
+  (6,6),
+  (6,6),
+  (6,6),
+  (6, 9)
 GO
 
 CREATE FUNCTION lab3.TournamentResults(@inpDate DATETIME)
@@ -202,13 +214,16 @@ SELECT
   Points as 'Очки',
   Goals as 'Забито',
   LosesGoals as 'Пропущено'
-FROM lab3.TournamentResults('2017-11-13')
+FROM lab3.TournamentResults('2017-13-11')
 
 CREATE TABLE #temp(
-  Team1 NVARCHAR(40),
+  [Хозяева] NVARCHAR(40),
   Team2 NVARCHAR(40),
   Score NVARCHAR(10)
 )
+
+DECLARE @currentDate DATETIME
+SET @currentDate = '2017-13-11'
 
 INSERT INTO #temp
 SELECT team1.TeamName as Team1,
@@ -217,7 +232,7 @@ CONCAT(games.HostScore, ':', games.GuestScore)
 FROM lab3.Teams as team1 INNER JOIN
 lab3.GamesResults as games ON games.HostTeamId=team1.TeamId INNER JOIN
 lab3.Teams as team2 ON games.GuestTeamId=team2.TeamId
-WHERE team1.TeamId!=team2.TeamId
+WHERE team1.TeamId!=team2.TeamId AND games.GameDate<@currentDate
 UNION
 SELECT team1.TeamName as Team1,
 team2.TeamName as Team2,
@@ -225,14 +240,19 @@ CONCAT(games.GuestScore, ':', games.HostScore)
 FROM lab3.Teams as team1 INNER JOIN
 lab3.GamesResults as games ON games.GuestTeamId=team1.TeamId INNER JOIN
 lab3.Teams as team2 ON games.HostTeamId=team2.TeamId
-WHERE team1.TeamId!=team2.TeamId
+WHERE team1.TeamId!=team2.TeamId AND games.GameDate<@currentDate
 
 DECLARE @teamNames NVARCHAR(max)
 SET @teamNames =
 SUBSTRING((SELECT ','+team.TeamName AS [text()]
-FROM lab3.Teams as team
+FROM (SELECT DISTINCT team.TeamName FROM lab3.Teams as team
+JOIN lab3.GamesResults as games ON games.HostTeamId=team.TeamId
+WHERE games.GameDate<@currentDate
+) as team
 ORDER BY team.TeamName
 FOR XML PATH ('')), 2, 1000)
+
+--SELECT @teamNames
 
 DECLARE @query NVARCHAR(MAX)
 SET @query = 'SELECT * FROM #temp PIVOT(
@@ -251,14 +271,15 @@ AS
 SELECT team.TeamName as 'Команда',
  player.PlayerSurname as 'Фамилия',
   player.PlayerRole as 'Роль',
-  COUNT(goals.GameId) as 'Количество голов'
+  COUNT(goals.GameId) as 'Голы'
   FROM lab3.Goals as goals INNER JOIN
   lab3.Players as player ON goals.PlayerId=player.PlayerId INNER JOIN
   lab3.Teams as team ON player.TeamId=team.TeamId
-  GROUP BY team.TeamName, player.PlayerSurname, player.PlayerRole;
+  GROUP BY team.TeamName, player.PlayerSurname, player.PlayerRole
 GO
 
 SELECT * FROM lab3.PlayersWithGoals
+ORDER BY [Голы] DESC
 GO
 
 IF OBJECT_ID('lab3.GoalKeepers', 'V') IS NOT NULL
