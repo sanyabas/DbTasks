@@ -108,12 +108,12 @@ CREATE TABLE lab3.GamesResults
 
 INSERT INTO lab3.GamesResults
 VALUES
-  (1, 2, '2017-10-11', 0, 3),
+  (1, 2, '2017-11-10', 0, 3),
   (2, 3, '2017-11-11', 2, 1),
-  (3, 1, '2017-12-11', 1, 1),
-  (1, 4, '2017-13-11', 0, 0),
-  (4,2,'2017-14-11',0,2),
-  (3,4, '2017-15-11', 3, 1)
+  (3, 1, '2017-11-12', 1, 1),
+  (1, 4, '2017-11-13', 0, 0),
+  (4,2,'2017-11-14',0,2),
+  (3,4, '2017-11-15', 3, 1)
 
 CREATE TABLE lab3.Goals
 (
@@ -214,24 +214,27 @@ SELECT
   Points as 'Очки',
   Goals as 'Забито',
   LosesGoals as 'Пропущено'
-FROM lab3.TournamentResults('2017-13-11')
+FROM lab3.TournamentResults('2017-11-13')
 
 CREATE TABLE #temp(
   [Хозяева] NVARCHAR(40),
   Team2 NVARCHAR(40),
-  Score NVARCHAR(10)
+  Score NVARCHAR(10),
+  score2 int
 )
 
 DECLARE @currentDate DATETIME
-SET @currentDate = '2017-13-11'
+SET @currentDate = '2017-11-13'
 
 INSERT INTO #temp
 SELECT team1.TeamName as Team1,
 team2.TeamName as Team2,
-CONCAT(games.HostScore, ':', games.GuestScore)
+CONCAT(games.HostScore, ':', games.GuestScore),
+results.Points
 FROM lab3.Teams as team1 INNER JOIN
 lab3.GamesResults as games ON games.HostTeamId=team1.TeamId INNER JOIN
-lab3.Teams as team2 ON games.GuestTeamId=team2.TeamId
+lab3.Teams as team2 ON games.GuestTeamId=team2.TeamId INNER JOIN
+lab3.TournamentResults(@currentDate) as results
 WHERE team1.TeamId!=team2.TeamId AND games.GameDate<@currentDate
 UNION
 SELECT team1.TeamName as Team1,
@@ -241,6 +244,8 @@ FROM lab3.Teams as team1 INNER JOIN
 lab3.GamesResults as games ON games.GuestTeamId=team1.TeamId INNER JOIN
 lab3.Teams as team2 ON games.HostTeamId=team2.TeamId
 WHERE team1.TeamId!=team2.TeamId AND games.GameDate<@currentDate
+
+SELECT * FROM #temp
 
 DECLARE @teamNames NVARCHAR(max)
 SET @teamNames =
@@ -256,7 +261,7 @@ FOR XML PATH ('')), 2, 1000)
 
 DECLARE @query NVARCHAR(MAX)
 SET @query = 'SELECT * FROM #temp PIVOT(
-  MAX(Score) FOR Team2 in('+@teamNames+')) p'
+  MAX(Score) FOR Team2 in('+@teamNames+',score2)) p'
 EXEC(@query)
 
 DROP TABLE #temp
