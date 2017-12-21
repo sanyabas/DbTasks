@@ -41,9 +41,9 @@ GO
 CREATE TABLE lab4.Tariffs(
     TariffId INT IDENTITY(1,1),
     TariffName nvarchar(50),
-    BasePayment int,
+    BasePayment smallmoney,
     IncludedTime int,
-    OverCost int
+    OverCost smallmoney
 )
 
 INSERT INTO lab4.Tariffs VALUES
@@ -58,11 +58,16 @@ SELECT * FROM lab4.Tariffs
 GO
 
 CREATE FUNCTION lab4.GetBestTariff(@usedMins int)
-RETURNS nvarchar(50)
+RETURNS @retResult TABLE(
+    DesiredMinutes int,
+    BestTariff nvarchar(50),
+    Cost smallmoney
+)
 AS
 BEGIN
-    DECLARE @result nvarchar(100);
-    SET @result=(SELECT TOP(1) tariff.TariffName
+    DECLARE @result nvarchar(50);
+    INSERT INTO @retResult
+    SELECT TOP(1) @usedMins, tariff.TariffName, tariff.TotalCost
     FROM (
         SELECT tariff.TariffName,
             CASE
@@ -71,9 +76,50 @@ BEGIN
             END as TotalCost
         FROM lab4.Tariffs as tariff
     ) as tariff
-    ORDER BY tariff.TotalCost)
-RETURN 'Для '+CAST(@usedMins as nvarchar)+' минут выгоден тариф '+@result;
+    ORDER BY tariff.TotalCost
+RETURN;
 END
 GO
 
-SELECT lab4.GetBestTariff(150)
+SELECT
+DesiredMinutes as 'Количество минут',
+BestTariff as 'Выгодный тариф',
+Cost as 'Стоимость'
+FROM lab4.GetBestTariff(100)
+GO
+
+CREATE FUNCTION lab4.Division()
+RETURNS @division TABLE(
+    SegmentStart int not null,
+    SegmentEnd int not null,
+    BestTariff nvarchar(50) not null
+)
+AS
+BEGIN
+    DECLARE @monthInMinutes int = 43200;
+    DECLARE @segmentStart int = 1;
+    DECLARE @currentMinutes int = 1;
+    DECLARE @currentBestTariff nvarchar(50) = (SELECT BestTariff FROM lab4.GetBestTariff(@currentMinutes))
+    WHILE @currentMinutes<=@monthInMinutes
+    BEGIN
+        DECLARE @bestTariff nvarchar(50) = (SELECT BestTariff FROM lab4.GetBestTariff(@currentMinutes));
+        IF @bestTariff!=@currentBestTariff
+        BEGIN  
+            INSERT INTO @division VALUES
+            (@segmentStart, @currentMinutes-1, @currentBestTariff);
+            SET @currentBestTariff=@bestTariff;
+            SET @segmentStart=@currentMinutes;
+        END
+        SET @currentMinutes+=1
+    END
+    INSERT INTO @division VALUES
+    (@segmentStart, @currentMinutes-1, @currentBestTariff);
+    RETURN;
+END
+GO
+
+SELECT 
+    SegmentStart as 'Минимальное количество минут',
+    SegmentEnd as 'Максимальное количество минут',
+    BestTariff as 'Самый выгодный тариф'
+FROM lab4.Division()
