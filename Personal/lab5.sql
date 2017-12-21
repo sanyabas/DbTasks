@@ -130,6 +130,9 @@ VALUES
     ('Рязанова', 'Ксения', 'Дмитриевна', 'ул. Московская, 241, 451', '356-54-89', '221-16-87')
 GO
 
+SELECT *
+FROM lab5.Deputies
+
 INSERT INTO lab5.Comissions
 VALUES
     ('Образование'),
@@ -179,45 +182,21 @@ ON lab5.ConferenceAttendance
 AFTER INSERT
 AS
 BEGIN
-    -- DECLARE IterateMembers CURSOR FOR
-    --     SELECT DeputyId
-    -- FROM lab5.Deputies
-    -- DECLARE @deputy int;
-    -- OPEN IterateMembers;
-    -- FETCH NEXT FROM IterateMembers INTO @deputy;
-    -- WHILE @@FETCH_STATUS = 0
-    -- BEGIN
-        -- PRINT('Processing person '+CAST(@deputy as nvarchar))
-        -- SELECT *
-        -- FROM inserted as first INNER JOIN
-        --     lab5.Conferences first_conf ON first.ConferenceId=first_conf.ConfId,
-        --     inserted as second INNER JOIN
-        --     lab5.Conferences second_conf ON second.ConferenceId=second_conf.ConfId
-        -- WHERE first.MemberId=second.MemberId AND
-        --     first.ConferenceId!=second.ConferenceId AND
-        --     first_conf.ConfTime=second_conf.ConfTime
-        IF EXISTS(
-            SELECT *
-        FROM inserted as first INNER JOIN
-            lab5.Conferences first_conf ON first.ConferenceId=first_conf.ConfId,
-            inserted as second INNER JOIN
-            lab5.Conferences second_conf ON second.ConferenceId=second_conf.ConfId
-        WHERE first.MemberId=second.MemberId AND
-            first.ConferenceId!=second.ConferenceId AND
-            first_conf.ConfTime=second_conf.ConfTime
-        )
-        BEGIN
-            -- CLOSE IterateMembers;
-            -- DEALLOCATE IterateMembers;
-            ROLLBACK TRANSACTION;
-            THROW 51000, 'Депутат находится на двух комиссиях одновременно', 1;
-            RETURN;
-        END
-        -- FETCH NEXT FROM IterateMembers INTO @deputy
-    -- END
-    -- CLOSE IterateMembers;
-    -- DEALLOCATE IterateMembers;
-    -- RETURN
+    IF EXISTS(
+        SELECT *
+    FROM inserted as first INNER JOIN
+        lab5.Conferences first_conf ON first.ConferenceId=first_conf.ConfId,
+        inserted as second INNER JOIN
+        lab5.Conferences second_conf ON second.ConferenceId=second_conf.ConfId
+    WHERE first.MemberId=second.MemberId AND
+        first.ConferenceId!=second.ConferenceId AND
+        first_conf.ConfTime=second_conf.ConfTime
+    )
+    BEGIN
+        ROLLBACK TRANSACTION;
+        THROW 51000, 'Депутат находится на двух комиссиях одновременно', 1;
+        RETURN;
+    END
 END
 GO
 
@@ -248,3 +227,90 @@ VALUES
     (9, 4),
     (9, 6),
     (9, 12)
+
+--Показать список комиссий, для каждой – ее состав и председателя.
+SELECT coms1.Subject as 'Комиссия',
+    dep1.Surname+' '+dep1.DeputyName+' '+dep1.FatherName as 'Председатель',
+    dep2.Surname+' '+dep2.DeputyName+' '+dep2.FatherName as 'Депутат'
+FROM lab5.Comissions as coms1 INNER JOIN
+    lab5.ComissionMembers as members1 ON coms1.ComissionId=members1.ComissionId AND members1.IsChairman=1 INNER JOIN
+    lab5.Deputies dep1 ON members1.MemberId=dep1.DeputyId,
+    lab5.Comissions as coms2 INNER JOIN
+    lab5.ComissionMembers as members2 ON coms2.ComissionId=members2.ComissionId AND members2.IsChairman=0 INNER JOIN
+    lab5.Deputies dep2 ON members2.MemberId=dep2.DeputyId
+WHERE members1.IsPresent=1 AND members2.IsPresent=1
+
+--показать в хронологическом порядке всех председателей комиссии
+DECLARE @startDate date='2016-10-10'
+DECLARE @endDate date='2018-01-01'
+DECLARE @comission nvarchar(50)='Образование'
+SELECT Comissions.Subject as 'Комиссия',
+    deps.Surname+' '+deps.DeputyName+' '+deps.FatherName as 'Председатель'
+FROM lab5.Comissions INNER JOIN
+    lab5.ComissionMembers as members ON members.ComissionId=Comissions.ComissionId INNER JOIN
+    lab5.Deputies as deps on members.MemberId=deps.DeputyId
+WHERE Comissions.Subject=@comission AND
+    members.IsChairman=1 AND
+    members.InDate>@startDate AND
+    (members.OutDate<@endDate OR
+    members.OutDate IS NULL)
+ORDER BY members.InDate
+
+--Показать список членов Думы, для каждого из них – список комиссий, в которых он участвовал и/или был председателем
+SELECT
+    dep.Surname+' '+dep.DeputyName+' '+dep.FatherName as 'Депутат',
+    comms.Subject as 'Комиссия'
+FROM lab5.Deputies as dep INNER JOIN
+    lab5.ComissionMembers as members ON dep.DeputyId=members.MemberId INNER JOIN
+    lab5.Comissions as comms ON members.ComissionId=comms.ComissionId
+GROUP BY dep.Surname+' '+dep.DeputyName+' '+dep.FatherName, comms.Subject
+
+--Для указанного интервала дат и комиссии выдать список членов с указанием количества пропущенных заседаний.
+DECLARE @startMissDate date='2016-10-10';
+DECLARE @endMissDate date='2018-01-01';
+DECLARE @comissionMiss nvarchar(50)='Образование';
+WITH AttendanceCount(memberId,confCount) AS (
+SELECT members.MemberId as memberId,
+COUNT(*) as confCount
+FROM lab5.Conferences as conf INNER JOIN
+lab5.Comissions as coms ON coms.ComissionId=conf.ComissionId INNER JOIN
+lab5.ComissionMembers as members ON coms.ComissionId=members.ComissionId INNER JOIN
+lab5.ConferenceAttendance as attend ON attend.MemberId=members.MemberId AND attend.ConferenceId=conf.ConfId
+WHERE coms.Subject=@comissionMiss AND
+    conf.ConfTime>@startMissDate AND
+    conf.ConfTime<@endMissDate
+GROUP BY members.MemberId)
+SELECT dep.Surname+' '+dep.DeputyName+' '+dep.FatherName as 'Депутат',
+COUNT(*)-AttendanceCount.confCount as 'Пропущенные заседания'
+FROM lab5.Conferences as conf INNER JOIN
+lab5.Comissions as coms ON coms.ComissionId=conf.ComissionId,
+AttendanceCount INNER JOIN
+lab5.Deputies as dep ON dep.DeputyId=AttendanceCount.memberId
+WHERE coms.Subject=@comissionMiss
+GROUP BY dep.Surname+' '+dep.DeputyName+' '+dep.FatherName, AttendanceCount.confCount
+
+--Вывести список заседаний в указанный интервал дат в хронологическом порядке, для каждого заседания – список присутствующих
+DECLARE @confStartDate date='2016-10-10'
+DECLARE @confEndDate date='2018-01-01'
+SELECT comms.Subject as 'Комиссия',
+    FORMAT(conf.ConfTime, 'D', 'ru-RU') as 'Дата',
+    dep.Surname+' '+dep.DeputyName+' '+dep.FatherName as 'Депутат'
+FROM
+    lab5.Conferences as conf INNER JOIN
+    lab5.Comissions as comms ON conf.ComissionId=comms.ComissionId INNER JOIN
+    lab5.ConferenceAttendance as attend ON attend.ConferenceId=conf.ConfId INNER JOIN
+    lab5.Deputies as dep ON dep.DeputyId=attend.MemberId
+WHERE conf.ConfTime>@confStartDate AND
+    conf.ConfTime<@confEndDate
+ORDER BY conf.ConfTime
+
+--По каждой комиссии показать количество проведенных заседаний в указанный период времени
+DECLARE @confListStartDate date='2016-10-10'
+DECLARE @confListEndDate date='2018-01-01'
+SELECT coms.Subject as 'Комиссия',
+COUNT(*) as 'Количество заседаний'
+FROM lab5.Conferences as conf INNER JOIN
+lab5.Comissions as coms ON conf.ComissionId=coms.ComissionId
+WHERE conf.ConfTime>@confListStartDate AND
+    conf.ConfTime<@confListEndDate
+GROUP BY coms.Subject
