@@ -122,6 +122,100 @@ BEGIN
 END
 GO
 
+CREATE FUNCTION lab4.GetTotalCost(@tariffId int, @minutes float)
+RETURNS float
+AS
+BEGIN
+DECLARE @tariff TABLE(BasePayment float, IncludedTime float, MinuteCost float)
+INSERT INTO @tariff
+    SELECT * FROM lab4.Tariffs
+    WHERE Tariffs.TariffId=@tariffId
+    IF @tariff.IncludedTime<0 RETURN @tariff.BasePayment;
+    IF @usedMins-@tariff.IncludedTime<0 RETURN @tariff.BasePayment;
+    RETURN @tariff.BasePayment+(@usedMins-@tariff.IncludedTime)*@tariff.OverCost;
+END
+GO
+
+CREATE FUNCTION lab4.GetBestTariff2(@minutes float)
+RETURNS nvarchar(100)
+AS
+BEGIN
+DECLARE @result TABLE (tariffName nvarchar(100), cost float);
+DECLARE @bestTariff nvarchar(100)
+INSERT INTO @bestTariff 
+SELECT TOP(1) tab.TariffName FROM (
+    SELECT tariff.TariffName as Name,
+        lab4.GetTotalCost(tariff.tariffId, @minutes) as totalCost
+     FROM lab4.Tariffs as tariff
+     ORDER BY totalCost
+) as tab
+RETURN @bestTariff;
+END
+GO
+
+CREATE FUNCTION lab4.IntersectTariffs(@id1 int, @id2 int)
+RETURNS @intersection TABLE(X float, Y float)
+AS
+BEGIN
+    DECLARE @first TABLE(BasePayment float, IncludedTime float, MinuteCost float)
+    DECLARE @second TABLE(BasePayment float, IncludedTime float, MinuteCost float)
+    DECLARE @includedTime1 float;
+    DECLARE @minuteCost1 float;
+    DECLARE @basePayment2 float;
+    DECLARE @includedTime2 float;
+    DECLARE @minuteCost2 float;
+    WITH first(basePayment, includedTime, minuteCost) AS (
+        SELECT * FROM lab4.Tariffs as tariff WHERE tariff.TariffId=@id1
+    ),
+    second(basePayment, includedTime, minuteCost) AS (
+        SELECT * FROM lab4.Tariffs as tariff WHERE tariff.TariffId=@id2
+    ),
+    intersectionInt(X) AS (
+        SELECT (-second.includedTime*second.MinuteCost+second.BasePayment-first.BasePayment)/(-second.MinuteCost) WHERE second.MinuteCost>0
+        UNION
+        SELECT (-first.IncludedTime*first.MinuteCost+first.BasePayment-second.BasePayment)/(-first.MinuteCost) WHERE first.MinuteCost>0
+        UNION
+        SELECT (-second.IncludedTime*second.MinuteCost+second.BasePayment+first.IncludedTime*first.MinuteCost-first.BasePayment)/(first.MinuteCost-second.MinuteCost) WHERE first.MinuteCost!=second.MinuteCost
+        UNION
+        SELECT 0
+    )
+    INSERT @intersection
+    SELECT intersectionInt.X, lab4.GetTotalCost(@id1, intersectionInt.X)
+    RETURN;
+    -- INSERT INTO @first SELECT * FROM lab4.Tariffs as tariff WHERE tariff.TariffId=@id1
+    -- INSERT INTO @second SELECT * FROM lab4.Tariffs as tariff WHERE tariff.TariffId=@id2
+-- RETURN
+END
+GO
+
+CREATE FUNCTION lab4.GetIntersections()
+RETURNS @result TABLE(
+    FirstId int,
+    SecondId int,
+    X float,
+    Y float
+)
+AS
+BEGIN
+    DECLARE @firstId INT
+    DECLARE @secondId INT
+    DECLARE iteratePairs CURSOR FOR
+        SELECT first.TariffId,
+        second.TariffId
+        FROM lab5.Tariffs as first INNER JOIN
+        lab5.Tariffs as second ON first.TariffId<second.TariffId 
+    OPEN iteratePairs
+    FETCH NEXT FROM iteratePairs INTO @firstId, @secondId
+    WHILE (@@FETCH_STATUS = 0)
+    BEGIN
+        INSERT INTO @result
+        SELECT 
+    END
+RETURN;
+END
+
+GO
+
 SELECT 
     SegmentStart as 'Минимальное количество минут',
     SegmentEnd as 'Максимальное количество минут',
